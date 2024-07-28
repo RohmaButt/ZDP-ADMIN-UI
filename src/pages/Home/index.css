@@ -1,0 +1,19 @@
+.data-area-div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: left;
+}
+.column-chart-card {
+    margin-top: 50px;
+    width: 60%;
+}
+
+.column-chart {
+    margin-top: 50px;
+}
+
+.charts-content {
+    max-height: 40% !important;
+}

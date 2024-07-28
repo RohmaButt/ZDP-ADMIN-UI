@@ -1,0 +1,21 @@
+{
+    "serverBusy": "Server is busy, Please try again in a moment",
+    "internalError": "Unknown Error, Please contact Zones helpdesk",
+    "doesNotExist": "{field} doesn't exist",
+    "alreadyExists": "{field} already exists",
+    "invalid": "Invalid {field}",
+    "invalidArguments": "Invalid Ids for {field} provided",
+    "notAllowed": "Current Role does not allow this operation",
+    "notFound": "{field} data not found",
+    "cannotBeEmpty": "{field} can not be empty",
+    "atleastOneRequired": "Atleast 1 {field} required",
+    "cannotBeDeleted": "{field} can not be deleted",
+    "isRequired": "{field} is required",
+    "unAuthorizedUser": "Unauthorized User",
+    "unAuthorizedAppRequest": "User unauthorized request for this app.",
+    "noRoleAssigned": "Unable to login - No role assigned to this user",
+    "statusRejected": "Status Rejected: {field}",
+    "unableToGet": "Unable to get {field}",
+    "updateNotAllowed": "Updating the {field} is not allowed",
+    "generalMessage": "Unable to process request. Please try again later."
+}

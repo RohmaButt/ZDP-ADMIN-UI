@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+    pim-ui:
+        container_name: admin_ui_prod
+        image: admin-ui-prod:1.0.0
+        build:
+            context: .
+            dockerfile: ./dockerfile
+        ports:
+            - 3001:80
+        environment:
+            REACT_APP_GraphQL_Server: http://localhost:3003/graphql 
+        restart: unless-stopped

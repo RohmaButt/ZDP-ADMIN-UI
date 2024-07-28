@@ -1,0 +1,18 @@
+.adminColoredIcon {
+    color: #878787;
+}
+
+.requestColoredIcon {
+    color: #FFC000;
+}
+
+.assignedColoredIcon {
+    color: #00AEEF;
+}
+
+.statusstyle {
+    background-color: #1890ff;
+    color: white;
+    border-radius: 25px;
+
+}

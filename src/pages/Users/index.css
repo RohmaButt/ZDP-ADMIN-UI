@@ -1,0 +1,18 @@
+.even {
+    background-color: aliceblue !important;
+}
+
+.odd {
+    background-color: white !important;
+}
+
+.buttonstyle {
+
+    margin-left: 1210px;
+    border-radius: 25px;
+    background-color: #005596;
+    color: white;
+    border: 0cm;
+    font-size: small;
+
+}

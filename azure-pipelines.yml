@@ -1,0 +1,241 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+  - dev
+  - sit
+  - uat
+
+variables:
+  - name: BRANCH_NAME
+    value: $[replace(variables['Build.SourceBranch'], 'refs/heads/', '')]
+  - name: date
+    value: $(date "+%d%m%Y")
+  - group: ZDP
+pool:
+  vmImage: ubuntu-latest
+steps:
+  - task: DownloadSecureFile@1
+    displayName: "download-dev-env"
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranchName'], 'dev'))
+    name: "zdpadminuidevenv"
+    inputs:
+      secureFile: .env-dev-admin-ui
+
+  - task: DownloadSecureFile@1
+    displayName: "download-sit-env"
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranchName'], 'sit'))
+    name: "zdpadminuisitenv"
+    inputs:
+      secureFile: .env-sit-admin-ui
+
+  - task: DownloadSecureFile@1
+    displayName: "download-uat-env"
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranchName'], 'uat'))
+    name: "zdpadminuiuatenv"
+    inputs:
+      secureFile: .env-uat-admin-ui
+
+  - task: DownloadSecureFile@1
+    displayName: "download-cypress-env"
+    name: "zdpadminuicypressenv"
+    inputs:
+      secureFile: cypress.env.json      
+      
+  - task: DownloadSecureFile@1
+    displayName: "download-npm-rc"
+    name: "zdpadminuinpmrc"
+    inputs:
+      secureFile: .npmrc      
+      
+  
+  - task: Bash@3
+    inputs:
+      targetType: "inline"
+      script: |
+        files=("$(zdpadminuidevenv.secureFilePath)" "$(zdpadminuisitenv.secureFilePath)" "$(zdpadminuiuatenv.secureFilePath)")
+        for file in "${files[@]}"; do
+          if [ -f "$file" ]; then
+            echo "File $file found, moving to build and renaming to .env"
+            sudo chown root:root $file
+            sudo chmod a+r $file
+            sudo cp $file $(Build.Repository.LocalPath)
+            sudo ls -a
+            sudo mv $file .env
+            sudo ls -a
+            cat .env
+            break
+          fi
+        done
+
+  - task: Bash@3
+    displayName: "copy cypress-env to repo path and set permissions"
+    inputs:
+      targetType: "inline"
+      script: |
+        file=$(zdpadminuicypressenv.secureFilePath)
+        sudo chown root:root $file
+        sudo chmod a+r $file
+        sudo cp $file $(Build.Repository.LocalPath)
+
+  - task: Bash@3
+    displayName: "copy npmrc to repo path and set permissions"
+    inputs:
+      targetType: "inline"
+      script: |
+        file=$(zdpadminuinpmrc.secureFilePath)
+        sudo chown root:root $file
+        sudo chmod a+r $file
+        sudo cp $file $(Build.Repository.LocalPath)
+        
+
+  - task: Bash@3
+    inputs:
+      targetType: "inline"
+      script: |
+        case $(BRANCH_NAME) in
+         dev)
+           echo "updating package.json as per dev"
+           filename="$(Build.Repository.LocalPath)/package.json"
+           new_contents='zdp.unit.zones.com'
+           sed -i "s|zdp.unit.zones.com|$new_contents|g" "$filename"
+           cat package.json
+           ;;
+         sit)
+           echo "updating package.json as per sit"
+           filename="$(Build.Repository.LocalPath)/package.json"
+           new_contents='zdp.sit.zones.com'
+           sed -i "s|zdp.unit.zones.com|$new_contents|g" "$filename"
+           cat package.json
+           ;;
+         uat)
+           echo "updating package.json as per uat"
+           filename="$(Build.Repository.LocalPath)/package.json"
+           new_contents='zdp.uat.zones.com'
+           sed -i "s|zdp.unit.zones.com|$new_contents|g" "$filename"
+           cat package.json
+           ;;
+         *)
+           echo "no branch equals"
+           ;;
+        esac
+
+  - task: NodeTool@0
+    inputs:
+      versionSpec: "16.x"
+    displayName: "Install Node.js"
+  - script: |
+      npm install
+    displayName: "npm install"
+
+  - script: |
+      npm run test:coverage
+    displayName: "Run Unit tests"
+
+  - task: PublishCodeCoverageResults@1
+    displayName: "Publish code Unit Test coverage"
+    condition: succeededOrFailed()
+    inputs:
+      codeCoverageTool: Cobertura
+      summaryFileLocation: "$(System.DefaultWorkingDirectory)/coverage/cobertura-coverage.xml"
+      reportDirectory: "$(System.DefaultWorkingDirectory)/coverage"
+
+  - task: PublishTestResults@2
+    displayName: "Publish Unit Tests"
+    condition: succeededOrFailed()
+    inputs:
+      testResultsFormat: "JUnit"
+      testResultsFiles: "**/junit.xml"
+
+  - task: PowerShell@2
+    displayName: "Show Docker Image tag value"
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    inputs:
+      targetType: "inline"
+      script: "echo $(BRANCH_NAME)$(date)"
+  - task: AzureCLI@2
+    displayName: "Connecting to ACR"
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    inputs:
+      azureSubscription: "TEST"
+      scriptType: "bash"
+      scriptLocation: "inlineScript"
+      inlineScript: "az acr login -n $(Registry)"
+
+  - task: Cache@2
+    displayName: Restore Cache
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'),not(canceled()), eq(variables.CACHE_RESTORED, 'true'))
+    inputs:
+      key: 'docker | "$(Agent.OS)" | cache'
+      path: $(Pipeline.Workspace)/docker
+      cacheHitVar: CACHE_RESTORED
+  - script: |
+      docker load -i $(Pipeline.Workspace)/docker/cache.tar
+    displayName: Docker restore
+    condition: and(not(canceled()), eq(variables.CACHE_RESTORED, 'true'))
+
+  - task: Docker@2
+    displayName: "Build Docker Image"
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    inputs:
+      containerRegistry: "acrconnect"
+      repository: "devadminui"
+      command: "build"
+      Dockerfile: "**/dockerfile"
+      tags: "$(BRANCH_NAME)"
+  - task: PowerShell@2
+    displayName: "Show Docker Image"
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    inputs:
+      targetType: "inline"
+      script: "docker images"
+  - task: PowerShell@2
+    displayName: "Tag Docker Image"
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    inputs:
+      targetType: "inline"
+      script: |
+        docker tag zdpapps.azurecr.io/devadminui:$(BRANCH_NAME) zdpapps.azurecr.io/$(BRANCH_NAME)adminui:$(BRANCH_NAME)-$(date)-$(Build.BuildId)
+        docker tag zdpapps.azurecr.io/devadminui:$(BRANCH_NAME) zdpapps.azurecr.io/$(BRANCH_NAME)adminui:latest
+
+  - script: |
+      mkdir -p $(Pipeline.Workspace)/docker
+      docker save -o $(Pipeline.Workspace)/docker/cache.tar zdpapps.azurecr.io/$(BRANCH_NAME)adminui:$(BRANCH_NAME)-$(date)-$(Build.BuildId)
+    displayName: Docker save cache
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'),not(canceled()), eq(variables.CACHE_RESTORED, 'true'))
+
+  - task: PowerShell@2
+    displayName: "Push Docker Image"
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    inputs:
+      targetType: "inline"
+      script: |
+        docker push zdpapps.azurecr.io/$(BRANCH_NAME)adminui:$(BRANCH_NAME)-$(date)-$(Build.BuildId)
+        docker push zdpapps.azurecr.io/$(BRANCH_NAME)adminui:latest
+
+  - task: AzureCLI@2
+    displayName: "Connecting to AKS"
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), or(eq(variables['Build.SourceBranchName'], 'dev'), eq(variables['Build.SourceBranchName'], 'sit')))
+    inputs:
+      azureSubscription: "TEST"
+      scriptType: "bash"
+      scriptLocation: "inlineScript"
+      inlineScript: "az account set --subscription 2b6fd2ef-e864-4eba-8b77-a611b5529c43 &&  az aks get-credentials --resource-group ZDP-dev --name ZDP-dev-aks"
+
+  - task: AzureCLI@2
+    displayName: "Connecting to AKS"
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranchName'], 'uat'))
+    inputs:
+      azureSubscription: "sc-zdp-uat-rg"
+      scriptType: "bash"
+      scriptLocation: "inlineScript"
+      inlineScript: "az account set --subscription 2b6fd2ef-e864-4eba-8b77-a611b5529c43 &&  az aks get-credentials --resource-group rg-zdp-uat-eastus-001 --name aks-zdp-uat-eastus-01"
+
+  - task: PowerShell@2
+    displayName: "Update Image in AKS"
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    inputs:
+      targetType: "inline"
+      script: 'kubectl set image deployment/$(BRANCH_NAME)-admin-ui $(BRANCH_NAME)-zdp-admin=zdpapps.azurecr.io/$(BRANCH_NAME)adminui:"$(BRANCH_NAME)-$(date)-$(Build.BuildId)" -n $(BRANCH_NAME)-admin-ui-ns'
